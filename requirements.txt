@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# requirements.txt — RDTI AI Agent
+#
+# Install with:
+#     pip install -r requirements.txt
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Web framework ─────────────────────────────────────────────────────────────
+streamlit
+
+# ── LangChain core + OpenAI integration ──────────────────────────────────────
+langchain
+langchain-openai
+openai
+
+# ── PDF generation ────────────────────────────────────────────────────────────
+fpdf2
+
+# ── HTTP client (Django backend POST + ABR API) ───────────────────────────────
+requests
+
+# ── Environment variable loader ───────────────────────────────────────────────
+python-dotenv

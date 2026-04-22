@@ -2,6 +2,7 @@
 styles.py
 ─────────
 All custom CSS for the RDTI Streamlit app.
+Supports both dark and light Streamlit themes.
 
 inject_css() is called once at the top of app.py main().
 """
@@ -10,28 +11,49 @@ import streamlit as st
 
 
 def inject_css() -> None:
-    """Inject the full dark-government stylesheet into the Streamlit page."""
+    """Inject theme-adaptive stylesheet into the Streamlit page."""
     st.markdown(
         """
         <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
 
+        /* ── Dark theme (default) ── */
         :root {
-            --bg:       #0d1117;
-            --surface:  #161b22;
-            --border:   #30363d;
-            --accent:   #f0a500;
-            --accent2:  #58a6ff;
-            --danger:   #f85149;
-            --success:  #3fb950;
-            --text:     #e6edf3;
-            --muted:    #8b949e;
-            --radius:   8px;
+            --rdti-bg:       #0d1117;
+            --rdti-surface:  #161b22;
+            --rdti-border:   #30363d;
+            --rdti-accent:   #f0a500;
+            --rdti-accent2:  #58a6ff;
+            --rdti-danger:   #f85149;
+            --rdti-success:  #3fb950;
+            --rdti-text:     #e6edf3;
+            --rdti-muted:    #8b949e;
+            --rdti-radius:   8px;
+            --rdti-chat-user-bg: #1c2128;
+            --rdti-chat-ai-bg:   #161b22;
+            --rdti-chat-ai-text: #cdd9e5;
         }
 
-        html, body, [class*="css"] {
-            background-color: var(--bg) !important;
-            color: var(--text) !important;
+        /* ── Light theme overrides ── */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --rdti-bg:       #ffffff;
+                --rdti-surface:  #f6f8fa;
+                --rdti-border:   #d0d7de;
+                --rdti-accent:   #d48d00;
+                --rdti-accent2:  #0969da;
+                --rdti-danger:   #cf222e;
+                --rdti-success:  #1a7f37;
+                --rdti-text:     #1f2328;
+                --rdti-muted:    #656d76;
+                --rdti-chat-user-bg: #f0f2f5;
+                --rdti-chat-ai-bg:   #eaf4ff;
+                --rdti-chat-ai-text: #1f2328;
+            }
+        }
+
+        /* ── Typography base ── */
+        [class*="css"] {
             font-family: 'DM Sans', sans-serif;
         }
 
@@ -40,21 +62,21 @@ def inject_css() -> None:
 
         /* ── Headings ── */
         h1 {
-            font-family: 'DM Serif Display', serif;
-            font-size: 2.4rem;
-            color: var(--accent);
+            font-family: 'DM Serif Display', serif !important;
+            font-size: 2.4rem !important;
+            color: var(--rdti-accent) !important;
             letter-spacing: -0.5px;
         }
         h2 {
-            font-family: 'DM Serif Display', serif;
-            font-size: 1.6rem;
-            color: var(--text);
+            font-family: 'DM Serif Display', serif !important;
+            font-size: 1.6rem !important;
+            color: var(--rdti-text) !important;
         }
         h3 {
-            font-family: 'DM Sans', sans-serif;
-            font-weight: 600;
-            font-size: 1.1rem;
-            color: var(--accent2);
+            font-family: 'DM Sans', sans-serif !important;
+            font-weight: 600 !important;
+            font-size: 1.1rem !important;
+            color: var(--rdti-accent2) !important;
             letter-spacing: 0.5px;
             text-transform: uppercase;
         }
@@ -62,27 +84,55 @@ def inject_css() -> None:
         /* ── Form controls ── */
         input, textarea, select,
         .stTextInput > div > div > input,
-        .stTextArea  > div > div > textarea {
-            background-color: var(--surface) !important;
-            border: 1px solid var(--border) !important;
-            color: var(--text) !important;
-            border-radius: var(--radius) !important;
+        .stTextArea  > div > div > textarea,
+        [data-testid="stTextInput"] input,
+        [data-testid="stTextArea"] textarea {
+            background-color: var(--rdti-surface) !important;
+            border: 1px solid var(--rdti-border) !important;
+            color: var(--rdti-text) !important;
+            border-radius: var(--rdti-radius) !important;
             font-family: 'DM Mono', monospace !important;
             font-size: 0.9rem !important;
         }
         input:focus, textarea:focus {
-            border-color: var(--accent) !important;
+            border-color: var(--rdti-accent) !important;
             box-shadow: 0 0 0 2px rgba(240,165,0,0.25) !important;
+        }
+
+        /* ── Selectbox / radio / dropdown ── */
+        .stSelectbox > div > div,
+        .stSelectbox [data-baseweb="select"] > div,
+        [data-testid="stSelectbox"] > div > div,
+        .stRadio > div {
+            background: var(--rdti-surface) !important;
+            color: var(--rdti-text) !important;
+        }
+        .stSelectbox [data-baseweb="select"] span,
+        [data-testid="stSelectbox"] span {
+            color: var(--rdti-text) !important;
+        }
+        .stRadio label,
+        .stRadio label span {
+            color: var(--rdti-text) !important;
+        }
+
+        /* ── Form labels ── */
+        .stTextInput label,
+        .stTextArea label,
+        .stSelectbox label,
+        .stRadio label,
+        [data-testid="stWidgetLabel"] {
+            color: var(--rdti-text) !important;
         }
 
         /* ── Buttons ── */
         .stButton > button,
         .stDownloadButton > button,
         .stFormSubmitButton > button {
-            background-color: var(--accent) !important;
+            background-color: var(--rdti-accent) !important;
             color: #000 !important;
             border: none !important;
-            border-radius: var(--radius) !important;
+            border-radius: var(--rdti-radius) !important;
             font-family: 'DM Sans', sans-serif !important;
             font-weight: 600 !important;
             padding: 0.55rem 1.4rem !important;
@@ -93,14 +143,14 @@ def inject_css() -> None:
 
         /* ── Step progress bar ── */
         .step-bar { display: flex; gap: 6px; margin-bottom: 1.8rem; }
-        .step      { flex: 1; height: 4px; border-radius: 2px; background: var(--border); }
-        .step.done { background: var(--success); }
-        .step.active { background: var(--accent); }
+        .step      { flex: 1; height: 4px; border-radius: 2px; background: var(--rdti-border); }
+        .step.done { background: var(--rdti-success); }
+        .step.active { background: var(--rdti-accent); }
 
         /* ── Card ── */
         .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
+            background: var(--rdti-surface);
+            border: 1px solid var(--rdti-border);
             border-radius: 12px;
             padding: 1.5rem 1.8rem;
             margin-bottom: 1.4rem;
@@ -108,53 +158,56 @@ def inject_css() -> None:
 
         /* ── Chat bubbles ── */
         .chat-user {
-            background: #1c2128;
-            border: 1px solid var(--border);
+            background: var(--rdti-chat-user-bg);
+            border: 1px solid var(--rdti-border);
             border-radius: 12px 12px 2px 12px;
             padding: 0.8rem 1rem;
             margin: 0.4rem 0 0.4rem 3rem;
             font-size: 0.93rem;
+            color: var(--rdti-text);
         }
         .chat-ai {
-            background: #161b22;
-            border: 1px solid var(--accent2);
+            background: var(--rdti-chat-ai-bg);
+            border: 1px solid var(--rdti-accent2);
             border-radius: 2px 12px 12px 12px;
             padding: 0.8rem 1rem;
             margin: 0.4rem 3rem 0.4rem 0;
             font-size: 0.93rem;
-            color: #cdd9e5;
+            color: var(--rdti-chat-ai-text);
         }
 
         /* ── Validation feedback ── */
-        .val-error { color: var(--danger);  font-size: 0.85rem; }
-        .val-ok    { color: var(--success); font-size: 0.85rem; }
+        .val-error { color: var(--rdti-danger);  font-size: 0.85rem; }
+        .val-ok    { color: var(--rdti-success); font-size: 0.85rem; }
 
         /* ── Character counter ── */
-        .char-count      { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--muted); text-align: right; }
-        .char-count.warn { color: var(--danger); }
+        .char-count      { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--rdti-muted); text-align: right; }
+        .char-count.warn { color: var(--rdti-danger); }
 
         /* ── Report body ── */
         .report-body {
-            background: var(--surface);
-            border-left: 3px solid var(--accent);
+            background: var(--rdti-surface);
+            border-left: 3px solid var(--rdti-accent);
             padding: 1.5rem;
-            border-radius: 0 var(--radius) var(--radius) 0;
+            border-radius: 0 var(--rdti-radius) var(--rdti-radius) 0;
             font-family: 'DM Mono', monospace;
             font-size: 0.85rem;
             line-height: 1.7;
             white-space: pre-wrap;
+            color: var(--rdti-text);
         }
 
         /* ── Sidebar ── */
         [data-testid="stSidebar"] {
-            background: var(--surface) !important;
-            border-right: 1px solid var(--border) !important;
+            background: var(--rdti-surface) !important;
+            border-right: 1px solid var(--rdti-border) !important;
         }
 
-        /* ── Selectbox / radio ── */
-        .stSelectbox > div > div,
-        .stRadio     > div {
-            background: var(--surface) !important;
+        /* ── Markdown / paragraph text ── */
+        .stMarkdown p,
+        .stMarkdown li,
+        .stMarkdown span {
+            color: var(--rdti-text);
         }
         </style>
         """,

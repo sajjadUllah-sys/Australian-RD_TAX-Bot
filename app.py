@@ -89,9 +89,9 @@ def render_step_bar(active_step: int) -> None:
         bars += f'<div class="step {cls}" title="{label}"></div>'
     st.markdown(
         f'<div class="step-bar">{bars}</div>'
-        f'<p style="color:var(--muted);font-size:0.8rem;margin-top:-0.8rem;">'
+        f'<p style="color:var(--rdti-muted);font-size:0.8rem;margin-top:-0.8rem;">'
         f'Step {active_step + 1} of {len(STEPS)}: '
-        f'<strong style="color:var(--text)">{STEPS[active_step]}</strong></p>',
+        f'<strong style="color:var(--rdti-text)">{STEPS[active_step]}</strong></p>',
         unsafe_allow_html=True,
     )
 
@@ -104,7 +104,7 @@ def render_intake() -> None:
     render_step_bar(0)
     st.markdown("## 🔬 RDTI Application Intake")
     st.markdown(
-        '<p style="color:var(--muted)">Complete the fields below to begin your '
+        '<p style="color:var(--rdti-muted)">Complete the fields below to begin your '
         "R&D Tax Incentive application assessment.</p>",
         unsafe_allow_html=True,
     )
@@ -162,8 +162,8 @@ def render_abn_check() -> None:
 
     st.markdown("## 🔍 ABN Validation")
     st.markdown(
-        f'<p style="color:var(--muted)">Validating ABN '
-        f'<code style="color:var(--accent)">{intake["abn"]}</code> '
+        f'<p style="color:var(--rdti-muted)">Validating ABN '
+        f'<code style="color:var(--rdti-accent)">{intake["abn"]}</code> '
         f'for <strong>{intake["company_name"]}</strong></p>',
         unsafe_allow_html=True,
     )
@@ -188,7 +188,7 @@ def render_abn_check() -> None:
 
     st.markdown(
         f'<p>API returned legal name: '
-        f'<code style="color:var(--accent2)">{abr_result["api_name"]}</code><br>'
+        f'<code style="color:var(--rdti-accent2)">{abr_result["api_name"]}</code><br>'
         f'Name similarity score: <code>{abr_result["similarity_score"]}</code></p>',
         unsafe_allow_html=True,
     )
@@ -227,7 +227,7 @@ def render_continuing_form() -> None:
 
     st.markdown("## 📋 Continuing Project — R&D Activity Details")
     st.markdown(
-        '<p style="color:var(--muted)">Answer each question within the character limits. '
+        '<p style="color:var(--rdti-muted)">Answer each question within the character limits. '
         "Minimum and maximum counts are enforced on submission.</p>",
         unsafe_allow_html=True,
     )
@@ -239,7 +239,7 @@ def render_continuing_form() -> None:
             label = field["label"].replace("{year}", str(year))
             st.markdown(f"**{label}**")
             st.markdown(
-                f'<p style="color:var(--muted);font-size:0.82rem;">'
+                f'<p style="color:var(--rdti-muted);font-size:0.82rem;">'
                 f'Min: {field["min"]} chars &nbsp;|&nbsp; Max: {field["max"]} chars</p>',
                 unsafe_allow_html=True,
             )
@@ -298,7 +298,7 @@ def render_new_project_chat() -> None:
     render_step_bar(2)
     st.markdown("## 🤖 New Project — RDTI Compliance Interview")
     st.markdown(
-        '<p style="color:var(--muted)">The AI compliance officer will interview you to '
+        '<p style="color:var(--rdti-muted)">The AI compliance officer will interview you to '
         "extract all information needed for a valid RDTI claim. "
         "Answer each question thoroughly and technically.</p>",
         unsafe_allow_html=True,
@@ -376,7 +376,7 @@ def render_report() -> None:
     render_step_bar(3)
     st.markdown("## 📄 Final R&D Project Report")
     st.markdown(
-        '<p style="color:var(--muted)">Your compiled RDTI report is ready. '
+        '<p style="color:var(--rdti-muted)">Your compiled RDTI report is ready. '
         "Download the PDF and submit to AusIndustry via your registered portal.</p>",
         unsafe_allow_html=True,
     )
@@ -431,7 +431,7 @@ def render_sidebar() -> None:
     with st.sidebar:
         st.markdown("### 🛠 Developer Panel")
         st.markdown(
-            '<p style="color:var(--muted);font-size:0.82rem;">Session state snapshot</p>',
+            '<p style="color:var(--rdti-muted);font-size:0.82rem;">Session state snapshot</p>',
             unsafe_allow_html=True,
         )
         st.markdown(f"**Phase:** `{st.session_state.get('phase', '—')}`")
@@ -471,12 +471,12 @@ def main() -> None:
           <span style="font-size:2.8rem;">🔬</span>
           <div>
             <h1 style="margin:0;line-height:1.1;">RDTI AI Agent</h1>
-            <p style="color:var(--muted);margin:0;font-size:0.9rem;">
+            <p style="color:var(--rdti-muted);margin:0;font-size:0.9rem;">
               Australian Research &amp; Development Tax Incentive — Application Assistant
             </p>
           </div>
         </div>
-        <div style="height:1px;background:var(--border);margin-bottom:1.5rem;"></div>
+        <div style="height:1px;background:var(--rdti-border);margin-bottom:1.5rem;"></div>
         """,
         unsafe_allow_html=True,
     )

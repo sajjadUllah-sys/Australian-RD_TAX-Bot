@@ -60,7 +60,7 @@ st.set_page_config(
 def init_state() -> None:
     """Seed st.session_state with default values on first run."""
     defaults = {
-        "phase":            "intake",   # intake | abn_check | continuing | new_project | report
+        "phase":            "intake",   # intake | abn_check | continuing_context | continuing | new_project | report
         "intake":           {},         # Phase 1 form data
         "abn_valid":        False,
         "abn_result":       {},
@@ -71,6 +71,10 @@ def init_state() -> None:
         "report_text":      "",
         "pdf_bytes":        None,
         "backend_response": {},
+        # ── Continuing-project wizard state ───────────────────────────
+        "current_step":         1,      # tracks wizard step (1-based)
+        "continuing_project_name": "",  # name of the continuing project
+        "continuing_file":      None,   # uploaded prior-year claim file
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -209,7 +213,7 @@ def render_abn_check() -> None:
 
     if st.button("Continue to Project Details →", use_container_width=True):
         next_phase = (
-            "continuing" if intake["project_type"] == "Continuing Project"
+            "continuing_context" if intake["project_type"] == "Continuing Project"
             else "new_project"
         )
         st.session_state["phase"] = next_phase
@@ -217,77 +221,152 @@ def render_abn_check() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 3A — Continuing project form
+# Phase 3A-0 — Continuing project: historical context
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_continuing_context() -> None:
+    """First step for Continuing Projects — establish which project is being updated."""
+    render_step_bar(2)
+    st.markdown("## 📂 Continuing Project — Historical Context")
+    st.markdown(
+        '<p style="color:var(--rdti-muted)">Before we begin the R&D questions, '
+        "please provide context about the project you are continuing.</p>",
+        unsafe_allow_html=True,
+    )
+
+    uploaded_file = st.file_uploader(
+        "Please upload last year's R&D claim data",
+        type=["pdf", "docx", "xlsx", "csv", "txt"],
+        key="continuing_file_uploader",
+    )
+    project_name = st.text_input(
+        "Or enter the name of the continuing project.",
+        value=st.session_state.get("continuing_project_name", ""),
+        key="continuing_project_name_input",
+    )
+
+    col_back, col_next = st.columns(2)
+    with col_back:
+        if st.button("← Back to ABN Check", use_container_width=True):
+            st.session_state["phase"] = "abn_check"
+            st.rerun()
+    with col_next:
+        if st.button("Next →", use_container_width=True, key="ctx_next"):
+            st.session_state["continuing_project_name"] = project_name.strip()
+            if uploaded_file is not None:
+                st.session_state["continuing_file"] = uploaded_file.read()
+            st.session_state["current_step"] = 1
+            st.session_state["phase"] = "continuing"
+            st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3A — Continuing project: multi-step wizard
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_continuing_form() -> None:
     render_step_bar(2)
     intake = st.session_state["intake"]
     year   = intake["project_year"]
+    step   = st.session_state["current_step"]          # 1-based
+    total  = len(CONTINUING_FIELDS)
+    field  = CONTINUING_FIELDS[step - 1]
+    label  = field["label"].replace("{year}", str(year))
 
     st.markdown("## 📋 Continuing Project — R&D Activity Details")
     st.markdown(
-        '<p style="color:var(--rdti-muted)">Answer each question within the character limits. '
-        "Minimum and maximum counts are enforced on submission.</p>",
+        f'<p style="color:var(--rdti-muted)">'
+        f'Question {step} of {total} — answer within the character limits.</p>',
         unsafe_allow_html=True,
     )
 
-    with st.form("continuing_form"):
-        field_values: dict[str, str] = {}
+    # ── Render only the current step's text area ─────────────────────────────
+    st.markdown(f"**{label}**")
+    st.markdown(
+        f'<p style="color:var(--rdti-muted);font-size:0.82rem;">'
+        f'Min: {field["min"]} chars &nbsp;|&nbsp; Max: {field["max"]} chars</p>',
+        unsafe_allow_html=True,
+    )
 
-        for field in CONTINUING_FIELDS:
-            label = field["label"].replace("{year}", str(year))
-            st.markdown(f"**{label}**")
-            st.markdown(
-                f'<p style="color:var(--rdti-muted);font-size:0.82rem;">'
-                f'Min: {field["min"]} chars &nbsp;|&nbsp; Max: {field["max"]} chars</p>',
-                unsafe_allow_html=True,
-            )
-            val = st.text_area(
-                label=label,
-                key=f"cont_{field['key']}",
-                height=field["height"],
-                label_visibility="collapsed",
-                value=st.session_state["form_answers"].get(field["key"], ""),
-            )
-            field_values[field["key"]] = val
+    # Retrieve previously saved value (if user navigated back)
+    saved_value = st.session_state["form_answers"].get(field["key"], "")
+    val = st.text_area(
+        label=label,
+        key=f"cont_{field['key']}",
+        height=field["height"],
+        label_visibility="collapsed",
+        value=saved_value,
+    )
 
-            # Live character counter
-            char_len  = len(val)
-            warn_cls  = "warn" if (char_len < field["min"] or char_len > field["max"]) else ""
-            st.markdown(
-                f'<p class="char-count {warn_cls}">{char_len} / {field["max"]} characters</p>',
-                unsafe_allow_html=True,
-            )
-            st.markdown("---")
+    # Live character counter
+    char_len = len(val)
+    warn_cls = "warn" if (char_len < field["min"] or char_len > field["max"]) else ""
+    st.markdown(
+        f'<p class="char-count {warn_cls}">{char_len} / {field["max"]} characters</p>',
+        unsafe_allow_html=True,
+    )
 
-        submitted = st.form_submit_button("Generate Report →", use_container_width=True)
+    st.markdown("---")
 
-    if submitted:
-        errors = []
-        for field in CONTINUING_FIELDS:
-            val = field_values[field["key"]]
-            if len(val) < field["min"]:
-                errors.append(
-                    f'"{field["label"][:50]}…" requires at least {field["min"]} characters '
-                    f"(you have {len(val)})."
-                )
-            elif len(val) > field["max"]:
-                errors.append(
-                    f'"{field["label"][:50]}…" exceeds {field["max"]} characters '
-                    f"(you have {len(val)})."
-                )
+    # ── Navigation buttons ───────────────────────────────────────────────────
+    col_back, col_next = st.columns(2)
 
-        if errors:
-            for e in errors:
-                st.markdown(f'<p class="val-error">⚠ {e}</p>', unsafe_allow_html=True)
+    with col_back:
+        if step == 1:
+            # First wizard step → go back to context screen
+            if st.button("← Back", use_container_width=True):
+                # Save current input before leaving
+                st.session_state["form_answers"][field["key"]] = val
+                st.session_state["phase"] = "continuing_context"
+                st.rerun()
         else:
-            st.session_state["form_answers"] = field_values
-            report = compile_report_from_form(intake, field_values)
-            st.session_state["report_text"] = report
-            st.session_state["pdf_bytes"]   = generate_pdf(report)
-            st.session_state["phase"]       = "report"
-            st.rerun()
+            if st.button("← Back", use_container_width=True):
+                st.session_state["form_answers"][field["key"]] = val
+                st.session_state["current_step"] = step - 1
+                st.rerun()
+
+    with col_next:
+        if step < total:
+            if st.button("Next →", use_container_width=True):
+                # Validate before advancing
+                if char_len < field["min"]:
+                    st.markdown(
+                        f'<p class="val-error">⚠ Please enter at least '
+                        f'{field["min"]} characters (you have {char_len}).</p>',
+                        unsafe_allow_html=True,
+                    )
+                elif char_len > field["max"]:
+                    st.markdown(
+                        f'<p class="val-error">⚠ Please reduce to under '
+                        f'{field["max"]} characters (you have {char_len}).</p>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.session_state["form_answers"][field["key"]] = val
+                    st.session_state["current_step"] = step + 1
+                    st.rerun()
+        else:
+            # Last step → Generate Report
+            if st.button("Generate Report →", use_container_width=True):
+                if char_len < field["min"]:
+                    st.markdown(
+                        f'<p class="val-error">⚠ Please enter at least '
+                        f'{field["min"]} characters (you have {char_len}).</p>',
+                        unsafe_allow_html=True,
+                    )
+                elif char_len > field["max"]:
+                    st.markdown(
+                        f'<p class="val-error">⚠ Please reduce to under '
+                        f'{field["max"]} characters (you have {char_len}).</p>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.session_state["form_answers"][field["key"]] = val
+                    report = compile_report_from_form(intake, st.session_state["form_answers"])
+                    st.session_state["report_text"] = report
+                    st.session_state["pdf_bytes"]   = generate_pdf(report)
+                    st.session_state["phase"]       = "report"
+                    st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -436,6 +515,8 @@ def render_sidebar() -> None:
         )
         st.markdown(f"**Phase:** `{st.session_state.get('phase', '—')}`")
         st.markdown(f"**ABN Valid:** `{st.session_state.get('abn_valid', '—')}`")
+        st.markdown(f"**Wizard Step:** `{st.session_state.get('current_step', '—')}`")
+        st.markdown(f"**Continuing Project:** `{st.session_state.get('continuing_project_name', '—') or '—'}`")
         st.markdown(f"**Chat msgs:** `{len(st.session_state.get('messages', []))}`")
         st.markdown(f"**Interview done:** `{st.session_state.get('interview_done', '—')}`")
         st.markdown(f"**Report ready:** `{bool(st.session_state.get('report_text'))}`")
@@ -487,6 +568,8 @@ def main() -> None:
         render_intake()
     elif phase == "abn_check":
         render_abn_check()
+    elif phase == "continuing_context":
+        render_continuing_context()
     elif phase == "continuing":
         render_continuing_form()
     elif phase == "new_project":

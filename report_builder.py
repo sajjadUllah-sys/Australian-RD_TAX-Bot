@@ -27,7 +27,7 @@ def _report_header(intake: dict) -> list[str]:
     """Return the common header lines shared by both report types."""
     return [
         "=" * 70,
-        "   AUSTRALIAN R&D TAX INCENTIVE — PROJECT REPORT",
+        "   AUSTRALIAN R&D TAX INCENTIVE -- PROJECT REPORT",
         "=" * 70,
         "",
         f"Company Name      : {intake['company_name']}",
@@ -57,22 +57,22 @@ def compile_report_from_form(intake: dict, form_answers: dict) -> str:
     """
     lines = _report_header(intake)
     sections = [
-        ("SECTION 1 — EXPERIMENTAL ACTIVITIES", "experiments"),
-        ("SECTION 2 — EVALUATION METHOD",        "evaluation"),
-        ("SECTION 3 — CONCLUSIONS",              "conclusions"),
-        ("SECTION 4 — NEW KNOWLEDGE",            "new_knowledge"),
+        ("SECTION 1 -- EXPERIMENTAL ACTIVITIES", "experiments"),
+        ("SECTION 2 -- EVALUATION METHOD",        "evaluation"),
+        ("SECTION 3 -- CONCLUSIONS",              "conclusions"),
+        ("SECTION 4 -- NEW KNOWLEDGE",            "new_knowledge"),
     ]
     for title, key in sections:
         lines += [
-            "─" * 70,
+            "-" * 70,
             title,
-            "─" * 70,
+            "-" * 70,
             form_answers.get(key, ""),
             "",
         ]
     lines += [
         "=" * 70,
-        "END OF REPORT — CONFIDENTIAL",
+        "END OF REPORT -- CONFIDENTIAL",
         "=" * 70,
     ]
     return "\n".join(lines)
@@ -94,14 +94,14 @@ def compile_report_from_chat(
     """
     lines = _report_header(intake)
     lines += [
-        "─" * 70,
+        "-" * 70,
         "AI INTERVIEW SUMMARY",
-        "─" * 70,
+        "-" * 70,
         chat_summary,
         "",
-        "─" * 70,
+        "-" * 70,
         "FULL CONVERSATION TRANSCRIPT",
-        "─" * 70,
+        "-" * 70,
     ]
     for msg in messages:
         role_label = "APPLICANT" if msg["role"] == "user" else "RDTI OFFICER"
@@ -109,7 +109,7 @@ def compile_report_from_chat(
     lines += [
         "",
         "=" * 70,
-        "END OF REPORT — CONFIDENTIAL",
+        "END OF REPORT -- CONFIDENTIAL",
         "=" * 70,
     ]
     return "\n".join(lines)
@@ -119,15 +119,42 @@ def compile_report_from_chat(
 # PDF generation
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Characters outside Latin-1 that fpdf's built-in Helvetica cannot render.
+_UNICODE_REPLACEMENTS: dict[str, str] = {
+    "\u2014": "--",   # em-dash
+    "\u2013": "-",    # en-dash
+    "\u2018": "'",    # left single curly quote
+    "\u2019": "'",    # right single curly quote
+    "\u201C": '"',    # left double curly quote
+    "\u201D": '"',    # right double curly quote
+    "\u2026": "...",  # ellipsis
+    "\u2500": "-",    # box-drawing horizontal
+    "\u2550": "=",    # box-drawing double horizontal
+    "\u00A0": " ",    # non-breaking space
+}
+
+
+def _sanitize(text: str) -> str:
+    """Replace non-Latin-1 characters so fpdf's built-in fonts can render them."""
+    for char, replacement in _UNICODE_REPLACEMENTS.items():
+        text = text.replace(char, replacement)
+    # Strip any remaining non-Latin-1 characters to prevent encoding crashes
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
 class _RDTIPdf(FPDF):
-    """FPDF subclass with consistent RDTI header and page-number footer."""
+    """FPDF subclass with consistent RDTI header, dark background, and footer."""
 
     def header(self):
+        # Dark background fill on every page (not just the first)
+        self.set_fill_color(13, 17, 23)
+        self.rect(0, 0, 210, 297, "F")
+
         self.set_font("Helvetica", "B", 9)
         self.set_text_color(180, 140, 0)
         self.cell(
             0, 8,
-            "AUSTRALIAN R&D TAX INCENTIVE — CONFIDENTIAL REPORT",
+            "AUSTRALIAN R&D TAX INCENTIVE -- CONFIDENTIAL REPORT",
             align="C",
         )
         self.ln(4)
@@ -147,10 +174,10 @@ def generate_pdf(report_text: str) -> bytes:
     Convert a plain-text report string into a formatted dark-themed PDF.
 
     Formatting rules applied line-by-line:
-      - Lines starting with "─" or "=" → horizontal rule
-      - Lines matching "LABEL   : value" → label in amber, value in light text
-      - Lines starting with "SECTION", "AI INTERVIEW", "FULL CONVER" → section header
-      - All other lines → standard body text (multi_cell for word-wrap)
+      - Lines starting with "-" or "=" -> horizontal rule
+      - Lines matching "LABEL   : value" -> label in amber, value in light text
+      - Lines starting with "SECTION", "AI INTERVIEW", "FULL CONVER" -> section header
+      - All other lines -> standard body text (multi_cell for word-wrap)
 
     Args:
         report_text: Plain-text string from compile_report_from_form/chat().
@@ -158,13 +185,12 @@ def generate_pdf(report_text: str) -> bytes:
     Returns:
         Raw PDF bytes suitable for st.download_button or HTTP file response.
     """
+    # Sanitise the entire report text up front
+    report_text = _sanitize(report_text)
+
     pdf = _RDTIPdf()
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.add_page()
-
-    # Dark background fill for the entire first page
-    pdf.set_fill_color(13, 17, 23)
-    pdf.rect(0, 0, 210, 297, "F")
 
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(230, 237, 243)
@@ -172,7 +198,7 @@ def generate_pdf(report_text: str) -> bytes:
     for line in report_text.split("\n"):
 
         # Horizontal rules
-        if line.startswith("─") or line.startswith("="):
+        if line.startswith("-") or line.startswith("="):
             pdf.set_draw_color(48, 54, 61)
             pdf.ln(1)
             pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -189,17 +215,19 @@ def generate_pdf(report_text: str) -> bytes:
             pdf.set_text_color(230, 237, 243)
             pdf.write(5, parts[1] if len(parts) > 1 else "")
             pdf.ln(6)
+            continue                        # ← prevent fall-through
 
         # Section titles (blue)
-        elif line.startswith(("SECTION", "AI INTERVIEW", "FULL CONVER")):
+        if line.startswith(("SECTION", "AI INTERVIEW", "FULL CONVER", "END OF REPORT")):
             pdf.set_font("Helvetica", "B", 10)
             pdf.set_text_color(88, 166, 255)
             pdf.multi_cell(0, 6, line)
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(230, 237, 243)
+            continue
 
-        # Body text
-        else:
-            pdf.multi_cell(0, 5, line if line else " ")
+        # Body text — reset X to left margin to guard against cursor drift
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 5, line if line.strip() else " ")
 
     return bytes(pdf.output())

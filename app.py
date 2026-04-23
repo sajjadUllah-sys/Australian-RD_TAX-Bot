@@ -19,6 +19,8 @@ import asyncio
 import os
 import re
 
+import openai
+
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -397,11 +399,30 @@ def render_new_project_chat() -> None:
     # Seed the conversation with the first AI greeting if the chat is empty
     if not st.session_state["messages"]:
         with st.spinner("Initialising compliance officer…"):
-            seed_msgs = build_langchain_messages([])
-            response  = llm.invoke(seed_msgs)
-            st.session_state["messages"].append(
-                {"role": "assistant", "content": response.content}
-            )
+            try:
+                seed_msgs = build_langchain_messages([])
+                response  = llm.invoke(seed_msgs)
+                st.session_state["messages"].append(
+                    {"role": "assistant", "content": response.content}
+                )
+            except (openai.APITimeoutError, openai.RateLimitError) as exc:
+                st.error(
+                    "⏳ The server is currently busy or timed out. "
+                    "Please wait a moment and refresh the page to try again."
+                )
+                st.stop()
+            except openai.BadRequestError as exc:
+                st.error(
+                    "❌ The request was rejected by the API. "
+                    f"Details: {exc}"
+                )
+                st.stop()
+            except Exception as exc:
+                st.error(
+                    "⚠️ An unexpected error occurred while initialising the interview. "
+                    f"Please refresh and try again. (Error: {exc})"
+                )
+                st.stop()
 
     # Render full chat history
     for msg in st.session_state["messages"]:
@@ -437,14 +458,43 @@ def render_new_project_chat() -> None:
     # Accept user input
     user_input = st.chat_input("Your response…")
     if user_input:
-        st.session_state["messages"].append({"role": "user", "content": user_input})
-        with st.spinner("Processing…"):
-            lc_msgs  = build_langchain_messages(st.session_state["messages"])
-            response = llm.invoke(lc_msgs)
-        st.session_state["messages"].append(
-            {"role": "assistant", "content": response.content}
-        )
-        st.rerun()
+        with st.spinner("Processing R&D data. This may take a moment for large inputs..."):
+            try:
+                # Build messages with the new user input included,
+                # but do NOT append to session state yet (state protection).
+                pending_messages = st.session_state["messages"] + [
+                    {"role": "user", "content": user_input}
+                ]
+                lc_msgs  = build_langchain_messages(pending_messages)
+                response = llm.invoke(lc_msgs)
+
+                # ── Success: commit both messages to session state ────
+                st.session_state["messages"].append(
+                    {"role": "user", "content": user_input}
+                )
+                st.session_state["messages"].append(
+                    {"role": "assistant", "content": response.content}
+                )
+                st.rerun()
+
+            except (openai.APITimeoutError, openai.RateLimitError):
+                st.error(
+                    "⏳ The server timed out or is rate-limited. "
+                    "Please try again in a few seconds, or break your "
+                    "text into smaller chunks."
+                )
+            except openai.BadRequestError:
+                st.error(
+                    "❌ The input was too large and exceeded the model's "
+                    "maximum token limit. Please shorten your response "
+                    "and try again."
+                )
+            except Exception as exc:
+                st.error(
+                    "⚠️ An unexpected error occurred while processing "
+                    "your input. Please try again or break your text "
+                    f"into smaller chunks. (Error: {exc})"
+                )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

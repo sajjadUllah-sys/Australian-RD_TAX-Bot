@@ -36,6 +36,7 @@ from config         import (
     PROJECT_YEARS,
     STEPS,
 )
+from doc_extractor  import extract_text_from_upload
 from llm_agent      import build_langchain_messages, get_llm
 from report_builder import (
     compile_report_from_chat,
@@ -77,6 +78,7 @@ def init_state() -> None:
         "current_step":         1,      # tracks wizard step (1-based)
         "continuing_project_name": "",  # name of the continuing project
         "continuing_file":      None,   # uploaded prior-year claim file
+        "historical_text":      "",     # extracted text from prior-year document
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -256,7 +258,14 @@ def render_continuing_context() -> None:
         if st.button("Next →", use_container_width=True, key="ctx_next"):
             st.session_state["continuing_project_name"] = project_name.strip()
             if uploaded_file is not None:
-                st.session_state["continuing_file"] = uploaded_file.read()
+                raw_bytes = uploaded_file.read()
+                st.session_state["continuing_file"] = raw_bytes
+                # ── Extract text from the uploaded document ───────────
+                with st.spinner("Extracting text from uploaded document…"):
+                    extracted = extract_text_from_upload(
+                        raw_bytes, uploaded_file.name
+                    )
+                st.session_state["historical_text"] = extracted
             st.session_state["current_step"] = 1
             st.session_state["phase"] = "continuing"
             st.rerun()
@@ -348,7 +357,7 @@ def render_continuing_form() -> None:
                     st.session_state["current_step"] = step + 1
                     st.rerun()
         else:
-            # Last step → Generate Report
+            # Last step → Generate Report via AI compilation
             if st.button("Generate Report →", use_container_width=True):
                 if char_len < field["min"]:
                     st.markdown(
@@ -364,11 +373,203 @@ def render_continuing_form() -> None:
                     )
                 else:
                     st.session_state["form_answers"][field["key"]] = val
-                    report = compile_report_from_form(intake, st.session_state["form_answers"])
-                    st.session_state["report_text"] = report
-                    st.session_state["pdf_bytes"]   = generate_pdf(report)
+                    _generate_continuing_report(intake)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Continuing-project: AI report compilation
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Maximum characters of historical text to send in the prompt.
+# Prevents token-limit blowout for very large prior-year documents.
+_MAX_HISTORICAL_CHARS = 12_000
+
+_CONTINUING_REPORT_SYSTEM_PROMPT = """\
+You are an expert Australian R&D Tax Incentive (RDTI) compliance analyst and technical writer.
+You have been provided with TWO sources of information:
+
+1. **Historical Prior-Year Claim Document** — extracted text from the applicant's previous year's
+   R&D claim submission. This gives you context on the project's origin, baseline knowledge,
+   original hypotheses, and prior experimental work.
+
+2. **Current-Year Form Answers** — the applicant's answers to this year's R&D activity questions
+   covering: (a) experiments conducted, (b) evaluation methods, (c) conclusions, and (d) new
+   knowledge generated.
+
+YOUR TASKS:
+A. **Evaluate RDTI Compliance** — Analyse whether the described activities constitute genuine
+   Core R&D Activities under Division 355 of the ITAA 1997. Specifically check that:
+   - The work represents a *systematic progression of work* based on principles of established
+     science, proceeding from hypothesis through experiment to evaluation and logical conclusion.
+   - The activities aim to generate *new knowledge* (including new knowledge in the form of new
+     or improved materials, products, devices, processes, or services).
+   - The outcome could NOT have been known or determined in advance on the basis of current
+     knowledge, information, or experience by a competent professional in the field.
+   If any deficiency is identified, note it in the report but still compile the best possible output.
+
+B. **Compile Formal Report** — Rewrite and synthesise ALL provided information (historical +
+   current-year) into a single, formal, AusIndustry-compliant R&D project report.
+
+OUTPUT FORMAT — You MUST produce your response in well-structured Markdown containing ALL of
+the following sections (use ## headings). Synthesise data from BOTH the historical upload AND
+the new form inputs:
+
+## Objective
+Describe the overarching R&D objective of the continuing project, incorporating context from
+the prior year's work and the current year's direction.
+
+## Core R&D Activity
+Detail the core R&D activity, explaining what specific technical challenge is being addressed
+and why it qualifies as a systematic investigation under Division 355.
+
+## Hypothesis
+State the hypothesis or hypotheses being tested, linking prior-year findings to the current
+year's experimental direction.
+
+## Sources Investigated
+List and describe the established science, prior art, technical literature, and any previous
+experimental results that were investigated or relied upon.
+
+## Experiments Conducted
+Describe the experiments conducted in the current year, including methodology, variables,
+controls, and how they tested the hypothesis.
+
+## Evaluation
+Explain the evaluation methods used or planned to assess experimental results, including
+criteria for success or failure.
+
+## Conclusions
+Present the conclusions drawn from the experiments, including whether the hypothesis was
+supported, refuted, or remains inconclusive.
+
+## New Knowledge Generated
+Articulate the genuinely new knowledge, capability, or understanding that resulted from the
+R&D activities — knowledge that was not previously available in the public domain or
+determinable by a competent professional.
+
+IMPORTANT RULES:
+- Write in formal, technical language appropriate for an AusIndustry assessor.
+- Do NOT fabricate technical details. Only use what is provided in the inputs.
+- If the historical document is missing or empty, note this and compile from the form answers alone.
+- If you detect compliance risks, include a brief "Compliance Notes" section at the end.
+"""
+
+
+def _generate_continuing_report(intake: dict) -> None:
+    """
+    Call OpenAI to synthesise the continuing-project form answers and any
+    historical document text into a formal, RDTI-compliant report.
+
+    Manages the spinner, error handling, and session-state updates.
+    """
+    form_answers    = st.session_state["form_answers"]
+    historical_text = st.session_state.get("historical_text", "")
+
+    # Resolve API key: Streamlit secrets first, then .env / environment
+    try:
+        api_key = st.secrets["OPENAI_API_KEY"]
+    except (FileNotFoundError, KeyError, Exception):
+        api_key = os.getenv("OPENAI_API_KEY", "")
+    try:
+        llm = get_llm(api_key)
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
+
+    # ── Build the user message ────────────────────────────────────────────
+    hist_section = historical_text.strip()
+    if len(hist_section) > _MAX_HISTORICAL_CHARS:
+        hist_section = hist_section[:_MAX_HISTORICAL_CHARS] + "\n\n[...truncated for length]"
+
+    user_content = (
+        "=== COMPANY DETAILS ===\n"
+        f"Company: {intake['company_name']}\n"
+        f"ABN: {intake['abn']}\n"
+        f"Industry: {intake['industry']}\n"
+        f"Project Year: {intake['project_year']}\n"
+        f"Project Name: {st.session_state.get('continuing_project_name', 'N/A')}\n\n"
+        "=== HISTORICAL PRIOR-YEAR CLAIM DOCUMENT ===\n"
+        f"{hist_section if hist_section else '[No prior-year document was uploaded.]'}\n\n"
+        "=== CURRENT-YEAR FORM ANSWERS ===\n"
+        f"**Experiments Conducted:**\n{form_answers.get('experiments', 'N/A')}\n\n"
+        f"**Evaluation Method:**\n{form_answers.get('evaluation', 'N/A')}\n\n"
+        f"**Conclusions:**\n{form_answers.get('conclusions', 'N/A')}\n\n"
+        f"**New Knowledge Generated:**\n{form_answers.get('new_knowledge', 'N/A')}\n"
+    )
+
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    messages = [
+        SystemMessage(content=_CONTINUING_REPORT_SYSTEM_PROMPT),
+        HumanMessage(content=user_content),
+    ]
+
+    with st.spinner("Evaluating compliance and generating R&D Report..."):
+        try:
+            response = llm.invoke(messages)
+            ai_report = response.content
+
+            st.session_state["report_text"] = ai_report
+            st.session_state["pdf_bytes"]   = generate_pdf(ai_report)
+            st.session_state["phase"]       = "report"
+            st.rerun()
+
+        except openai.BadRequestError:
+            # Token limit exceeded — try again with truncated historical text
+            st.warning(
+                "⚠️ The combined input exceeded the model's token limit. "
+                "Retrying with a shorter version of the historical document…"
+            )
+            if hist_section and len(hist_section) > 3000:
+                hist_section_short = hist_section[:3000] + "\n\n[...heavily truncated for length]"
+                user_content_short = (
+                    "=== COMPANY DETAILS ===\n"
+                    f"Company: {intake['company_name']}\n"
+                    f"ABN: {intake['abn']}\n"
+                    f"Industry: {intake['industry']}\n"
+                    f"Project Year: {intake['project_year']}\n"
+                    f"Project Name: {st.session_state.get('continuing_project_name', 'N/A')}\n\n"
+                    "=== HISTORICAL PRIOR-YEAR CLAIM DOCUMENT ===\n"
+                    f"{hist_section_short}\n\n"
+                    "=== CURRENT-YEAR FORM ANSWERS ===\n"
+                    f"**Experiments Conducted:**\n{form_answers.get('experiments', 'N/A')}\n\n"
+                    f"**Evaluation Method:**\n{form_answers.get('evaluation', 'N/A')}\n\n"
+                    f"**Conclusions:**\n{form_answers.get('conclusions', 'N/A')}\n\n"
+                    f"**New Knowledge Generated:**\n{form_answers.get('new_knowledge', 'N/A')}\n"
+                )
+                messages_retry = [
+                    SystemMessage(content=_CONTINUING_REPORT_SYSTEM_PROMPT),
+                    HumanMessage(content=user_content_short),
+                ]
+                try:
+                    response = llm.invoke(messages_retry)
+                    ai_report = response.content
+                    st.session_state["report_text"] = ai_report
+                    st.session_state["pdf_bytes"]   = generate_pdf(ai_report)
                     st.session_state["phase"]       = "report"
                     st.rerun()
+                except Exception as retry_exc:
+                    st.error(
+                        "❌ The input is still too large even after truncation. "
+                        f"Please shorten your answers and try again. (Error: {retry_exc})"
+                    )
+            else:
+                st.error(
+                    "❌ The form answers exceeded the model's maximum token limit. "
+                    "Please shorten your responses and try again."
+                )
+
+        except (openai.APITimeoutError, openai.RateLimitError):
+            st.error(
+                "⏳ The server timed out or is rate-limited. "
+                "Please wait a moment and try again."
+            )
+
+        except Exception as exc:
+            st.error(
+                "⚠️ An unexpected error occurred while generating the report. "
+                f"Please try again. (Error: {exc})"
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

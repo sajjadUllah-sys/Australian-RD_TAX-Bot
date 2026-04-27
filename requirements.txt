@@ -16,6 +16,10 @@ openai
 # ── PDF generation ────────────────────────────────────────────────────────────
 fpdf2
 
+# ── Document text extraction (uploaded prior-year claims) ─────────────────────
+PyPDF2
+docx2txt
+
 # ── HTTP client (Django backend POST + ABR API) ───────────────────────────────
 requests
 

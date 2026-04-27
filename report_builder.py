@@ -143,39 +143,39 @@ def _sanitize(text: str) -> str:
 
 
 class _RDTIPdf(FPDF):
-    """FPDF subclass with consistent RDTI header, dark background, and footer."""
+    """FPDF subclass with consistent RDTI header, white background, and footer."""
 
     def header(self):
-        # Dark background fill on every page (not just the first)
-        self.set_fill_color(13, 17, 23)
+        # ── White background on every page ────────────────────────────────
+        self.set_fill_color(255, 255, 255)          # #FFFFFF
         self.rect(0, 0, 210, 297, "F")
 
         self.set_font("Helvetica", "B", 9)
-        self.set_text_color(180, 140, 0)
+        self.set_text_color(0, 51, 102)              # dark navy title
         self.cell(
             0, 8,
             "AUSTRALIAN R&D TAX INCENTIVE -- CONFIDENTIAL REPORT",
             align="C",
         )
         self.ln(4)
-        self.set_draw_color(48, 54, 61)
+        self.set_draw_color(180, 180, 180)            # light-gray rule
         self.line(10, self.get_y(), 200, self.get_y())
         self.ln(4)
 
     def footer(self):
         self.set_y(-15)
         self.set_font("Helvetica", "I", 8)
-        self.set_text_color(139, 148, 158)
+        self.set_text_color(120, 120, 120)            # mid-gray page number
         self.cell(0, 10, f"Page {self.page_no()}", align="C")
 
 
 def generate_pdf(report_text: str) -> bytes:
     """
-    Convert a plain-text report string into a formatted dark-themed PDF.
+    Convert a plain-text report string into a formatted white-background PDF.
 
     Formatting rules applied line-by-line:
       - Lines starting with "-" or "=" -> horizontal rule
-      - Lines matching "LABEL   : value" -> label in amber, value in light text
+      - Lines matching "LABEL   : value" -> label in dark blue, value in black
       - Lines starting with "SECTION", "AI INTERVIEW", "FULL CONVER" -> section header
       - All other lines -> standard body text (multi_cell for word-wrap)
 
@@ -192,38 +192,39 @@ def generate_pdf(report_text: str) -> bytes:
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.add_page()
 
+    # ── Default body text: black on white ─────────────────────────────────
     pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(230, 237, 243)
+    pdf.set_text_color(0, 0, 0)                       # #000000
 
     for line in report_text.split("\n"):
 
         # Horizontal rules
         if line.startswith("-") or line.startswith("="):
-            pdf.set_draw_color(48, 54, 61)
+            pdf.set_draw_color(180, 180, 180)         # light-gray rule
             pdf.ln(1)
             pdf.line(10, pdf.get_y(), 200, pdf.get_y())
             pdf.ln(3)
             continue
 
-        # Key : value metadata lines (amber key, white value)
+        # Key : value metadata lines (dark-blue key, black value)
         if re.match(r"^[A-Z][A-Za-z\s]+\s+:", line):
             parts = line.split(":", 1)
             pdf.set_font("Helvetica", "B", 9)
-            pdf.set_text_color(240, 165, 0)
+            pdf.set_text_color(0, 51, 102)            # dark navy label
             pdf.write(5, parts[0] + ":")
             pdf.set_font("Helvetica", "", 9)
-            pdf.set_text_color(230, 237, 243)
+            pdf.set_text_color(0, 0, 0)               # black value
             pdf.write(5, parts[1] if len(parts) > 1 else "")
             pdf.ln(6)
             continue                        # ← prevent fall-through
 
-        # Section titles (blue)
+        # Section titles (dark blue)
         if line.startswith(("SECTION", "AI INTERVIEW", "FULL CONVER", "END OF REPORT")):
             pdf.set_font("Helvetica", "B", 10)
-            pdf.set_text_color(88, 166, 255)
+            pdf.set_text_color(0, 70, 140)            # section-heading blue
             pdf.multi_cell(0, 6, line)
             pdf.set_font("Helvetica", "", 9)
-            pdf.set_text_color(230, 237, 243)
+            pdf.set_text_color(0, 0, 0)               # reset to black
             continue
 
         # Body text — reset X to left margin to guard against cursor drift
